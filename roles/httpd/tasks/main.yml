@@ -1,0 +1,83 @@
+---
+# Tasks for configuring Apache HTTP server.
+
+- include_vars: '{{ item }}'
+  with_first_found:
+    - files:
+        - '{{ ansible_distribution }}-{{ ansible_distribution_version }}.yml'           # CentOS-6.5
+        - '{{ ansible_os_family }}-{{ ansible_distribution_version }}.yml'              # RedHat-6.5
+        - '{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml'     # CentOS-6
+        - '{{ ansible_os_family }}-{{ ansible_distribution_major_version }}.yml'        # RedHat-6
+        - '{{ ansible_distribution }}.yml'                                              # CentOS
+        - '{{ ansible_os_family }}.yml'                                                 # RedHat
+        - 'default.yml'
+      paths: '../vars'
+
+- name: determine if selinux is installed
+  shell: which getenforce || exit 0
+  register: selinux_installed
+  ignore_errors: true
+  changed_when: false
+
+- name: determine if selinux is enabled
+  shell: getenforce | grep -q Disabled || echo yes
+  register: selinux_enabled
+  when: selinux_installed.stdout != ""
+  ignore_errors: true
+  changed_when: false
+
+- name: allow Apache network connections
+  seboolean: name=httpd_can_network_connect state=true persistent=yes
+  when: selinux_installed.stdout != "" and selinux_enabled.stdout == "yes"
+
+- name: enable mod_ssl (Ubuntu specific)
+  shell: a2enmod ssl
+  when: ansible_os_family == "Debian"
+  notify:
+    - restart httpd
+    - restart apache2
+
+- name: enable mod_rewrite (Ubuntu specific)
+  shell: a2enmod rewrite
+  when: ansible_os_family == "Debian"
+  notify:
+    - restart httpd
+    - restart apache2
+
+- name: create self signed SSL certificates
+  shell: openssl req -x509 -nodes -days 99999 -newkey rsa:2048 -keyout /etc/tower/awx.key -out /etc/tower/awx.cert -subj "/C=US/ST=NC/L=Raleigh/O=AnsibleWorks/CN=www.ansibleworks.com" creates=/etc/tower/awx.cert
+  notify:
+    - restart httpd
+    - restart apache2
+
+- name: configure file permissions on awx.cert
+  file: path=/etc/tower/awx.cert owner={{aw_user}} group={{aw_group}} mode=0600
+  notify:
+    - restart httpd
+    - restart apache2
+
+- name: configure file permissions on awx.key
+  file: path=/etc/tower/awx.key owner={{aw_user}} group={{aw_group}} mode=0600
+  notify:
+    - restart httpd
+    - restart apache2
+
+- name: enable apache munin monitoring
+  file: src=/usr/share/munin/plugins/apache_processes dest=/etc/munin/plugins/apache_processes state=link
+
+- name: determine if a munin htpasswd exists
+  stat: path={{aw_home}}/.munin_htpasswd
+  register: muninpasswd_exists
+  changed_when: false
+
+- name: set default munin htpasswd
+  htpasswd: path={{aw_home}}/.munin_htpasswd name=admin password={{munin_password}} owner={{aw_user}} group={{aw_group}} mode=0644
+  when: muninpasswd_exists is defined and muninpasswd_exists.stat.exists == False
+
+#- name: start httpd and configure to startup automatically
+#  service: name={{httpd_init_name}} enabled=yes
+
+#- name: start munin automatically at startup
+#  service: name=munin-node enabled=yes
+#  notify:
+#    - restart tower

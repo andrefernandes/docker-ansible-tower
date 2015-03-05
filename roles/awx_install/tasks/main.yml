@@ -1,0 +1,192 @@
+---
+
+# Tasks for installing and configuring the Ansible Tower application.
+
+- include_vars: '{{ item }}'
+  with_first_found:
+    - files:
+        - '{{ ansible_distribution }}-{{ ansible_distribution_version }}.yml'           # CentOS-6.5
+        - '{{ ansible_os_family }}-{{ ansible_distribution_version }}.yml'              # RedHat-6.5
+        - '{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml'     # CentOS-6
+        - '{{ ansible_os_family }}-{{ ansible_distribution_major_version }}.yml'        # RedHat-6
+        - '{{ ansible_distribution }}.yml'                                              # CentOS
+        - '{{ ansible_os_family }}.yml'                                                 # RedHat
+        - 'default.yml'
+      paths: '../../supervisor/vars'
+
+- name: include task specific variables
+  include_vars: '{{ ansible_os_family }}.yml'
+
+- name: Configure the Tower settings directory.
+  file: path=/etc/tower state=directory owner={{aw_user}} group={{aw_user}} mode=0755
+
+- name: configure awx user home directory
+  file: path={{aw_home}} state=directory owner={{aw_user}} group={{aw_user}} mode=0755
+
+- name: configure awx .ssh directory
+  file: path={{aw_home}}/.ssh state=directory owner={{aw_user}} group={{aw_user}} mode=0700
+
+- name: configure awx projects directory
+  file: path={{aw_home}}/projects state=directory owner={{aw_user}} group={{aw_user}} mode=0750
+
+- name: configure awx job output directory
+  file: path={{aw_home}}/job_status state=directory owner={{aw_user}} group={{aw_user}} mode=0750
+
+- name: configure awx static directory
+  file: path={{aw_home}}/public/static state=directory owner={{aw_user}} group={{aw_user}} mode=0755 recurse=yes
+
+- name: Add Tower's `conf.d` directory.
+  file: path=/etc/tower/conf.d state=directory owner={{aw_user}} group={{aw_group}} mode=0750
+
+- name: configure tower log directory
+  file: path=/var/log/tower state=directory owner={{aw_user}} group={{aw_user}} mode=0755
+
+- name: configure tower warning log file
+  file: path=/var/log/tower/tower_warnings.log owner={{aw_user}} group={{aw_group}} mode=0640 state=touch
+
+# When running with an external database, we need to remove 'postgresql' from
+# the list of tower managed services.
+- name: update ansible-tower service configuration
+  template:
+    src: ansible-tower.sysconfig.j2
+    dest: '{{tower_sysconfig_path}}'
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Fetch the secret key from the primary node.
+  slurp:
+    src: /etc/tower/SECRET_KEY
+  when: primacy == 'primary'
+  register: secret_key
+
+- name: Place the secret key on secondary nodes.
+  copy:
+    content: "{{ hostvars[groups['primary'][0]]['secret_key']['content'].decode('base64') }}"
+    dest: /etc/tower/SECRET_KEY
+    force: yes
+    group: awx
+    mode: 0640
+    owner: awx
+  when: primacy == 'secondary'
+
+- name: Configure Tower's database settings (primary nodes only).
+  template:
+    dest: /etc/tower/conf.d/postgres.py
+    force: no
+    src: postgres.py.j2
+  when: primacy == 'primary' and pg_password is defined
+  register: result
+  notify:
+    - restart httpd
+    - restart apache2
+    - restart supervisor
+
+- name: Fetch the database settings from the primary node.
+  slurp:
+    src: /etc/tower/conf.d/postgres.py
+  when: primacy == 'primary'
+  register: pg_settings
+
+- name: Place the database settings on secondary nodes.
+  copy:
+    content: "{{ hostvars[groups['primary'][0]]['pg_settings']['content'].decode('base64') }}"
+    dest: /etc/tower/conf.d/postgres.py
+    group: awx
+    mode: 0640
+    owner: awx
+  when: primacy == 'secondary'
+
+- name: Configure Tower's celeryd settings.
+  template:
+    dest: /etc/tower/conf.d/celeryd.py
+    force: no
+    src: celeryd.py.j2
+  notify:
+    - restart httpd
+    - restart apache2
+    - restart supervisor
+
+- name: Configure file permissions on Tower's celeryd settings.
+  file: path=/etc/tower/conf.d/celeryd.py owner={{aw_user}} group={{aw_group}} mode=0640
+
+- name: Install Tower's settings file if it doesn't already exist.
+  template:
+    dest: /etc/tower/settings.py
+    force: no
+    src: settings.py.j2
+  notify:
+    - restart httpd
+    - restart apache2
+    - restart munin
+    - restart supervisor
+
+# If we're upgrading from Tower < 2.1, we won't have ATOMIC_REQUESTS set in
+# the old settings file.
+#
+# We don't want to plow over the entire settings file, but it's important
+# to have this since Tower 2.1 shifts us to Django 1.6 across the board.
+- name: Ensure that ATOMIC_REQUESTS is set in settings.
+  lineinfile:
+    dest: /etc/tower/conf.d/postgres.py
+    insertafter: "'ENGINE': 'django.db.backends.postgresql_psycopg2',\n"
+    line: "       'ATOMIC_REQUESTS': True,"
+    state: present
+  notify:
+    - restart httpd
+    - restart apache2
+    - restart munin
+
+- name: Configure the file permissions on Tower's settings file.
+  file: path=/etc/tower/settings.py owner={{aw_user}} group={{aw_group}} mode=0640
+
+#- name: stop supervisor if it is running
+#  service: name={{sup_init_name}} state=stopped
+
+- name: create awx database schema
+  command: awx-manage syncdb --noinput
+  sudo_user: awx
+  register: awx_syncdb
+  changed_when: "'Creating table ' in awx_syncdb.stdout"
+  when: primacy == 'primary'
+
+- name: migrate awx database schema (may take awhile when upgrading)
+  command: awx-manage migrate --noinput
+  sudo_user: awx
+  register: awx_migrate
+  changed_when: "'Migrating forwards to' in awx_migrate.stdout"
+  when: primacy == 'primary'
+
+- name: collect awx static files
+  command: awx-manage collectstatic --noinput --clear -v0
+  sudo_user: awx
+  sudo: True
+  # When using --clear, this command will *always* result in a change
+  # register: awx_collectstatic
+  # changed_when: "not awx_collectstatic.stdout_lines[-1].startswith('0 static files')"
+
+- name: store the tower version
+  shell: "tower-manage version > {{aw_home}}/.tower_version"
+  sudo_user: awx
+  sudo: True
+
+# NOTE: The following command works except for checking if the user already
+# exists and setting the password:
+#   awx-manage createsuperuser --username={{admin_username}} --email={{admin_email}} --noinput
+# So instead use a variation of the example from:
+#   http://source.mihelac.org/2009/10/23/django-avoiding-typing-password-for-superuser/
+
+- name: Check to see if the Django superuser already exists.
+  shell: tower-manage user_info {{ admin_username }}
+  register: superuser_exists
+  changed_when: False
+  ignore_errors: yes
+  when: primacy == 'primary'
+
+- name: create django super user
+  shell: echo "from django.contrib.auth.models import User; User.objects.filter(username='{{admin_username}}').count() or User.objects.create_superuser('{{admin_username}}', '{{admin_email}}', '{{admin_password}}')" | awx-manage shell
+  sudo_user: awx
+  when: primacy == 'primary' and superuser_exists|failed
+
+- name: enable ansible-tower init
+  service: name=ansible-tower enabled=yes

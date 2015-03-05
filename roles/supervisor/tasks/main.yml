@@ -1,0 +1,36 @@
+---
+# Tasks for configuring Supervisord.
+
+- include_vars: '{{ item }}'
+  with_first_found:
+    - files:
+        - '{{ ansible_distribution }}-{{ ansible_distribution_version }}.yml'           # CentOS-6.5
+        - '{{ ansible_os_family }}-{{ ansible_distribution_version }}.yml'              # RedHat-6.5
+        - '{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.yml'     # CentOS-6
+        - '{{ ansible_os_family }}-{{ ansible_distribution_major_version }}.yml'        # RedHat-6
+        - '{{ ansible_distribution }}.yml'                                              # CentOS
+        - '{{ ansible_os_family }}.yml'                                                 # RedHat
+        - 'default.yml'
+      paths: '../vars'
+
+- name: install supervisor config
+  template: src={{item}} dest={{sup_conf_location}} force=yes
+  with_first_found:
+    - files:
+        - 'awx-{{ ansible_distribution }}-{{ ansible_distribution_version }}.conf.j2'           # CentOS-6.5
+        - 'awx-{{ ansible_os_family }}-{{ ansible_distribution_version }}.conf.j2'              # RedHat-6.5
+        - 'awx-{{ ansible_distribution }}-{{ ansible_distribution_major_version }}.conf.j2'     # CentOS-6
+        - 'awx-{{ ansible_os_family }}-{{ ansible_distribution_major_version }}.conf.j2'        # RedHat-6
+        - 'awx-{{ ansible_distribution }}.conf.j2'                                              # CentOS
+        - 'awx-{{ ansible_os_family }}.conf.j2'                                                 # RedHat
+        - 'awx.conf.j2'
+      paths: '../templates'
+
+#- name: start/enable supervisord process
+#  service: name={{sup_init_name}} state=started enabled=no
+
+#- name: wait to ensure supervisord is up
+#  pause: seconds=5
+
+#- name: reload supervisord configuration via supervisorctl
+#  command: supervisorctl reload

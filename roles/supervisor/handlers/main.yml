@@ -1,0 +1,29 @@
+---
+# Handlers for common notifications.
+
+- name: restart supervisor
+  debug: msg="restart supervisor"
+#  service: name={{sup_init_name}} state=restarted
+#  when: ansible_distribution != 'Ubuntu'
+
+#- name: restart supervisor
+#  supervisorctl: name=awx-celeryd state=restarted
+#  notify: restart callback receiver
+#  when: ansible_distribution == 'Ubuntu'
+
+- name: restart callback receiver
+  debug: msg="restart callback receiver"
+#  supervisorctl: name=awx-callback-receiver state=restarted
+#  notify: restart task handler
+#  when: ansible_distribution == 'Ubuntu'
+
+- name: restart task handler
+  debug: msg="restart task handler"
+#  supervisorctl: name=awx-task-system state=restarted
+#  notify: restart socketio service
+#  when: ansible_distribution == 'Ubuntu'
+
+- name: restart socketio service
+  debug: msg="restart socketio service"
+#  supervisorctl: name=awx-socketio-service state=restarted
+#  when: ansible_distribution == 'Ubuntu'

@@ -1,0 +1,6 @@
+[primary]
+localhost
+
+[all:children]
+primary
+

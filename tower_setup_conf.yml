@@ -1,0 +1,17 @@
+admin_password: senha
+database: external
+munin_password: senha
+pg_database: ansible
+pg_host: postgres
+pg_password: ansible
+pg_port: 5432
+pg_username: ansible
+primary_machine: localhost
+redis_password: DzHFfBhXtbxKdEGR6GYCBXCC5HYiZC2bNdJVaQRD
+
+#admin_password: senha
+#database: internal
+#munin_password: senha
+#pg_password: eMJzngSbga6ScM27DMBeAvSHCMT6Hy2yDazEUtbK
+#primary_machine: localhost
+#redis_password: DFjdS7ihGrpjPbPmu8WpeYHwAZii7CYvkcjgjAhu

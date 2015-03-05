@@ -1,0 +1,8 @@
+---
+# Tasks to configure iptables rules
+
+- name: determine if iptables is installed
+  command: iptables --version
+  register: iptables_installed
+  ignore_errors: true
+  changed_when: false

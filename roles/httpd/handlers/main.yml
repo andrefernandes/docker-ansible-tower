@@ -1,0 +1,16 @@
+---
+# Handlers for common notifications.
+
+- name: restart httpd
+  debug: msg="restart rsyslogd"
+  when: ansible_distribution in ["CentOS","RedHat"]
+
+- name: restart apache2
+  debug: msg="restart apache2"
+  when: ansible_distribution in ["Ubuntu"]
+
+- name: restart munin
+  debug: msg="restart munin"
+
+- name: restart tower
+  debug: msg="restart tower"

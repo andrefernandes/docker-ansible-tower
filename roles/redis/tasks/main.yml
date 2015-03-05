@@ -1,0 +1,52 @@
+---
+- include_vars: '{{ item }}'
+  with_first_found:
+    - files:
+        - '{{ ansible_os_family }}.yml'
+        - 'default.yml'
+      paths: '../vars'
+
+- name: Ensure that the Redis configuration fragments directory exists.
+  file:
+    dest: '{{ redis_conf_fragments }}/'
+    group: redis
+    mode: 0750
+    owner: redis
+    state: directory
+
+- name: Place the base Redis configuration file.
+  template:
+    dest: '{{ redis_conf_fragments }}/000-base.conf'
+    group: redis
+    mode: 0644
+    owner: redis
+    src: 000-base.conf.j2
+
+- name: Place the security configuration file, only if one does not already exist.
+  template:
+    dest: '{{ redis_conf_fragments }}/100-security.conf'
+    force: no
+    group: redis
+    mode: 0640
+    owner: redis
+    src: 100-security.conf.j2
+
+- name: Assemble the Redis configuration.
+  assemble:
+    group: redis
+    dest: '{{ redis_conf_path }}/{{ redis_conf_filename }}'
+    mode: 0640
+    owner: redis
+    src: '{{ redis_conf_fragments }}/'
+  register: result
+
+#- name: Ensure that Redis is running.
+#  service:
+#    name: '{{ redis_service_name }}'
+#    state: started
+
+#- name: If the Redis configuration was changed, reload Redis immediately.
+#  service:
+#    name: '{{ redis_service_name }}'
+#    state: restarted
+#  when: result.changed
