@@ -16,6 +16,12 @@ images to install systemd in a safe way. Shamefully I forgot the
 sources (will fix it as soon as I can).
 
 I also had to change several playbooks from the installation, because
-"service" tasks are also broken on containers.
+"service" tasks are also broken on containers. The "roles" folder contains
+the modified playbook files.
 
+## Now what?
 
+Building this image is a three-step task:
+
+* ./runsql.sh
+* ./runbash.sh /opt/ansible-tower-setup/setup.sh -c /opt/tower_setup_conf.yml -i /opt/inventory

@@ -18,8 +18,10 @@ RUN cd /opt && \
 
 ADD roles /opt/ansible-tower-setup/roles
 
-RUN cd /opt/ansible-tower-setup && \
-    ./setup.sh -c /opt/tower_setup_conf.yml -i /opt/inventory
+#RUN cd /opt/ansible-tower-setup && \
+#    ./setup.sh -c /opt/tower_setup_conf.yml -i /opt/inventory
+
+EXPOSE 80 443
 
 VOLUME [ "/sys/fs/cgroup" ]
 
