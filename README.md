@@ -38,7 +38,8 @@ Building this image is a three-step task:
 * Change whatever you want tower_setup_conf.yml and inventory files
 
 * Run the tower container on "setup mode" (this will populate the database and
-  creates a "towerinstall" temporary container):
+  creates a "towerinstall" temporary container *and* will populate the volume at
+  '/opt/data/tower'):
 
     ./runinstall.sh
 
@@ -48,6 +49,9 @@ Building this image is a three-step task:
 
 * Please observe the mount points that must be managed:
 
-    TODO
+    * /opt/data/tower : this is mounted as "/etc/tower" by both *runinstall.sh* (that
+      populates it) and *runtower.sh* (uses it).
+
+
 
 
